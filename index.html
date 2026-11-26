@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Everyday Goods</title>
+<style>
+:root{--bg:#f3f4f6;--ink:#111827;--mute:#5b6472;--acc:#2748d8;--card:#fff;--line:#d9dde3;--bad:#d9381e;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1420;--ink:#eef1f6;--mute:#9aa4b5;--acc:#7f9bff;--card:#182033;--line:#2b364d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Segoe UI",Helvetica,Arial,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;padding:12px 16px;flex-wrap:wrap}
+.logo{font:700 1.4rem Georgia,serif;margin-right:auto}
+input,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+button{font:inherit;cursor:pointer;border:0;border-radius:8px;padding:8px 14px;background:var(--acc);color:#fff;font-weight:600}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.banner{max-width:1040px;margin:24px auto 0;padding:0 16px}
+.banner h1{font:700 clamp(1.8rem,5vw,3rem)/1.1 Georgia,serif;margin:0 0 6px}
+.banner p{color:var(--mute);margin:0}
+.chips{max-width:1040px;margin:16px auto;padding:0 16px;display:flex;gap:8px;flex-wrap:wrap}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.grid{max-width:1040px;margin:0 auto;padding:0 16px 48px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.icon{font-size:3.2rem;text-align:center;background:var(--bg);border-radius:8px;padding:12px}
+.price{font-weight:700}.low{color:var(--bad);font-size:.85rem}.cat{color:var(--mute);font-size:.85rem}
+.card p{margin:0;color:var(--mute);font-size:.92rem;flex:1}
+#panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,100%);background:var(--card);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .25s;z-index:10;display:flex;flex-direction:column;padding:16px;padding-top:calc(16px + env(safe-area-inset-top,0px))}
+#panel.open{transform:none}
+#items{flex:1;overflow:auto}
+.row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.row b{flex:1}
+.qty{display:flex;gap:6px;align-items:center}.qty button{padding:2px 9px}
+#msg{min-height:24px;font-weight:600}
+form{display:grid;gap:8px;margin-top:8px}
+@media(prefers-reduced-motion:reduce){#panel{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">Everyday Goods</span>
+  <input id="q" type="search" placeholder="Search products" aria-label="Search products">
+  <button id="cartBtn" class="ghost">Cart (<span id="count">0</span>)</button>
+</header>
+<div class="banner"><h1>Good things for everyday life.</h1><p>Free delivery on every order, and stock updates live as people buy.</p></div>
+<div class="chips" id="chips"></div>
+<div class="grid" id="grid"></div>
+
+<aside id="panel" aria-label="Shopping cart">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Your cart</h2><button class="ghost" id="close">Close</button></div>
+  <div id="items"></div>
+  <h3>Total: <span id="total">$0.00</span></h3>
+  <form id="checkout">
+    <input id="name" placeholder="Full name" required aria-label="Full name">
+    <input id="email" type="email" placeholder="Email address" required aria-label="Email address">
+    <button id="place">Place order</button>
+  </form>
+  <div id="msg" role="status"></div>
+</aside>
+
+<script>
+const $=s=>document.querySelector(s);
+const j=(u,o)=>fetch(u,o).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);return d});
+const money=n=>'$'+n.toFixed(2);
+let cat='All',cart=[],stock={};
+try{cart=JSON.parse(localStorage.getItem('cart')||'[]')}catch(e){}
+const save=()=>{try{localStorage.setItem('cart',JSON.stringify(cart))}catch(e){}};
+const cats=['All','Electronics','Fashion','Home','Sports'];
+$('#chips').innerHTML=cats.map(c=>`<button class="ghost chip" data-c="${c}" aria-pressed="${c==='All'}">${c}</button>`).join('');
+$('#chips').onclick=e=>{if(!e.target.dataset.c)return;cat=e.target.dataset.c;
+  document.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',b.dataset.c===cat));load()};
+$('#q').oninput=()=>load();
+
+async function load(){
+  const list=await j('/api/products?category='+encodeURIComponent(cat)+'&q='+encodeURIComponent($('#q').value));
+  list.forEach(p=>stock[p.id]=p);
+  $('#grid').innerHTML=list.length?list.map(p=>`<div class="card"><div class="icon">${p.icon}</div><span class="cat">${p.category}</span><strong>${p.name}</strong><p>${p.desc}</p>
+   <div class="price">${money(p.price)}</div>${p.stock<=10?`<div class="low">Only ${p.stock} left</div>`:''}
+   <button data-add="${p.id}" ${p.stock<1?'disabled':''}>${p.stock<1?'Sold out':'Add to cart'}</button></div>`).join(''):'<p>No products match your search. Try a different word or category.</p>';
+}
+$('#grid').onclick=e=>{const id=+e.target.dataset.add;if(!id)return;
+  const it=cart.find(c=>c.id===id);const max=stock[id].stock;
+  if(it){if(it.qty<max)it.qty++}else cart.push({id,qty:1});
+  save();render();$('#panel').classList.add('open')};
+
+function render(){
+  $('#count').textContent=cart.reduce((a,c)=>a+c.qty,0);
+  const total=cart.reduce((a,c)=>a+(stock[c.id]?stock[c.id].price*c.qty:0),0);
+  $('#total').textContent=money(total);
+  $('#items').innerHTML=cart.length?cart.map(c=>{const p=stock[c.id]||{name:'Item',price:0,icon:''};
+    return `<div class="row"><span>${p.icon}</span><b>${p.name}<br><small>${money(p.price)}</small></b>
+    <div class="qty"><button class="ghost" data-m="${c.id}" aria-label="Decrease">-</button>${c.qty}<button class="ghost" data-p="${c.id}" aria-label="Increase">+</button></div></div>`}).join(''):'<p>Your cart is empty. Add something from the store.</p>';
+  $('#place').disabled=!cart.length;
+}
+$('#items').onclick=e=>{const m=+e.target.dataset.m,p=+e.target.dataset.p;
+  if(m){const it=cart.find(c=>c.id===m);it.qty--;if(it.qty<1)cart=cart.filter(c=>c.id!==m)}
+  if(p){const it=cart.find(c=>c.id===p);if(it.qty<stock[p].stock)it.qty++}
+  save();render()};
+$('#cartBtn').onclick=()=>$('#panel').classList.toggle('open');
+$('#close').onclick=()=>$('#panel').classList.remove('open');
+$('#checkout').onsubmit=async e=>{e.preventDefault();$('#msg').textContent='';
+  try{const o=await j('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:cart,name:$('#name').value,email:$('#email').value})});
+    cart=[];save();$('#msg').textContent=`Thank you! Order ${o.id} placed. Total ${money(o.total)}.`;await load();render()}
+  catch(err){$('#msg').textContent=err.message}};
+load().then(render);
+</script>
+</body>
+</html>
